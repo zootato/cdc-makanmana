@@ -53,11 +53,32 @@ export interface Merchant extends CDCApiMerchant {
 // API service for fetching CDC vouchers data
 export const fetchCDCMerchants = async (): Promise<CDCApiResponse> => {
   try {
-    const response = await fetch('http://prd-tmp.cdn.gowhere.gov.sg/assets/cdcvouchersgowhere/data.gzip?v=2');
-    if (!response.ok) {
-      throw new Error('Failed to fetch CDC vouchers data');
+    // Try HTTPS first (more secure and likely to work in production)
+    const httpsUrl = 'https://prd-tmp.cdn.gowhere.gov.sg/assets/cdcvouchersgowhere/data.gzip?v=2';
+    
+    try {
+      console.log('Trying HTTPS CDC API...');
+      const response = await fetch(httpsUrl);
+      if (response.ok) {
+        return await response.json();
+      }
+      console.warn('HTTPS CDC API failed, trying HTTP...');
+    } catch (httpsError) {
+      console.warn('HTTPS CDC API error:', httpsError);
     }
-    return await response.json();
+    
+    // Fallback to HTTP with proxy
+    const httpUrl = 'http://prd-tmp.cdn.gowhere.gov.sg/assets/cdcvouchersgowhere/data.gzip?v=2';
+    console.log('Trying HTTP CDC API with proxy...');
+    
+    const { fetchWithProxy } = await import('../utils/proxyUtils');
+    const data = await fetchWithProxy(httpUrl);
+    
+    if (data && data.locations) {
+      return data;
+    }
+    
+    throw new Error('No valid data received from CDC API');
   } catch (error) {
     console.error('Error fetching CDC merchants:', error);
     throw error;

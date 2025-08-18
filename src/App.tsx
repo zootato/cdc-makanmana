@@ -100,7 +100,12 @@ function App() {
         
         // Load data from CDC API
         console.log('Loading data from CDC API...');
-        await loadBasicData();
+        try {
+          await loadBasicData();
+        } catch (apiError) {
+          console.warn('CDC API failed, trying backup data...', apiError);
+          await loadBackupData();
+        }
         
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -171,7 +176,12 @@ function App() {
         
         // Load data from CDC API
         console.log('Loading data from CDC API...');
-        await loadBasicData();
+        try {
+          await loadBasicData();
+        } catch (apiError) {
+          console.warn('CDC API failed, trying backup data...', apiError);
+          await loadBackupData();
+        }
         
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -203,6 +213,45 @@ function App() {
         
       } catch (error) {
         console.error('Error in loadBasicData:', error);
+        throw error;
+      }
+    };
+
+    const loadBackupData = async () => {
+      try {
+        console.log('Loading backup data...');
+        const response = await fetch('/backup-data.json');
+        if (!response.ok) {
+          throw new Error(`Backup data not found: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Backup data loaded:', data.locations?.length, 'merchants');
+        
+        // Convert backup data to our Merchant format
+        const { enhanceMerchantData } = await import('./data/merchants');
+        const merchants = data.locations.map((location: any) => ({
+          ...location,
+          // Map the backup data fields to our expected format
+          latitude: location.LAT,
+          longitude: location.LON,
+          isHalal: location.isHalal || false,
+          isOpen: location.isOpen || true,
+          status: location.status || 'Unknown'
+        })).map(enhanceMerchantData);
+        
+        setMerchants(merchants);
+        setFilteredMerchants(merchants);
+        setDisplayedMerchants(merchants.slice(0, 50));
+        setLastUpdated(data.lastUpdated || 'Backup data');
+        setDataSource('fresh');
+        
+        // Cache the backup data
+        DataManager.saveMerchantsToCache(merchants);
+        setLoading(false);
+        
+      } catch (error) {
+        console.error('Error loading backup data:', error);
         throw error;
       }
     };

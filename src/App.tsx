@@ -12,7 +12,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>('');
-  const [dataSource, setDataSource] = useState<'cache' | 'fresh'>('cache');
+  const [dataSource, setDataSource] = useState<'cache' | 'static' | 'fresh'>('cache');
   const [refreshProgress, setRefreshProgress] = useState<{current: number, total: number} | null>(null);
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -98,8 +98,31 @@ function App() {
           }
         }
         
-        // If no valid cache, load basic data quickly
-        console.log('No valid cache found, loading basic data...');
+        // Try to load from static JSON file first (production)
+        try {
+          console.log('Loading from static JSON file...');
+          const response = await fetch('/data/enhanced-merchants.json');
+          if (response.ok) {
+            const staticData = await response.json();
+            console.log(`Loaded ${staticData.length} merchants from static file`);
+            
+            setMerchants(staticData);
+            setFilteredMerchants(staticData);
+            setDisplayedMerchants(staticData.slice(0, 50));
+            setDataSource('static');
+            setLastUpdated('Pre-built data with Google Maps integration');
+            
+            // Cache the static data for future use
+            DataManager.saveMerchantsToCache(staticData);
+            setLoading(false);
+            return;
+          }
+        } catch (staticError) {
+          console.warn('Failed to load static data, falling back to API:', staticError);
+        }
+        
+        // If static data fails, load basic data from API
+        console.log('Loading basic data from API...');
         await loadBasicData();
         
       } catch (err) {
@@ -217,6 +240,8 @@ function App() {
           <h2 className="text-lg font-semibold text-gray-900 mb-2">Loading CDC Merchants</h2>
           {dataSource === 'cache' ? (
             <p className="text-gray-600">Loading cached data...</p>
+          ) : dataSource === 'static' ? (
+            <p className="text-gray-600">Loading enhanced merchant data...</p>
           ) : (
             <p className="text-gray-600">Loading latest CDC voucher data...</p>
           )}

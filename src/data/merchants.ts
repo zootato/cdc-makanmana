@@ -58,11 +58,23 @@ export const fetchCDCMerchants = async (): Promise<CDCApiResponse> => {
     
     try {
       console.log('Trying HTTPS CDC API...');
-      const response = await fetch(httpsUrl);
+      const response = await fetch(httpsUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json, */*',
+          'Accept-Encoding': 'gzip, deflate, br',
+        }
+      });
+      
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+      
       if (response.ok) {
-        return await response.json();
+        const data = await response.json();
+        console.log('HTTPS CDC API success - got', data.locations?.length, 'merchants');
+        return data;
       }
-      console.warn('HTTPS CDC API failed, trying HTTP...');
+      console.warn('HTTPS CDC API failed with status:', response.status);
     } catch (httpsError) {
       console.warn('HTTPS CDC API error:', httpsError);
     }

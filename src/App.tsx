@@ -103,7 +103,8 @@ function App() {
         await loadBasicData();
         
       } catch (err) {
-        setError('Failed to load merchant data. Please try again later.');
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        setError(`Failed to load merchant data: ${errorMessage}. Please check the console for details.`);
         console.error('Error loading merchants:', err);
         setLoading(false);
       }
@@ -135,6 +136,74 @@ function App() {
         console.error('Error loading basic data:', error);
         setError('Failed to load data. Please try again later.');
         setLoading(false);
+      }
+    };
+
+    loadMerchants();
+  }, []);
+
+  const retryLoading = () => {
+    setError(null);
+    setLoading(true);
+    
+    const loadMerchants = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Check if we have valid cached data
+        if (DataManager.hasValidCachedData()) {
+          console.log('Loading from cache...');
+          const cachedMerchants = DataManager.loadCachedMerchants();
+          
+          if (cachedMerchants.length > 0) {
+            setMerchants(cachedMerchants);
+            setFilteredMerchants(cachedMerchants);
+            setDisplayedMerchants(cachedMerchants.slice(0, 50));
+            setDataSource('cache');
+            
+            const cacheInfo = DataManager.getCacheInfo();
+            setLastUpdated(cacheInfo.lastUpdate || 'Unknown');
+            setLoading(false);
+            return;
+          }
+        }
+        
+        // Load data from CDC API
+        console.log('Loading data from CDC API...');
+        await loadBasicData();
+        
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        setError(`Failed to load merchant data: ${errorMessage}. Please check the console for details.`);
+        console.error('Error loading merchants:', err);
+        setLoading(false);
+      }
+    };
+
+    const loadBasicData = async () => {
+      try {
+        // Import the basic functions
+        const { fetchCDCMerchants, enhanceMerchantData } = await import('./data/merchants');
+        
+        setDataSource('fresh');
+        const data = await fetchCDCMerchants();
+        
+        // Use basic enhancement only (fast keyword-based detection)
+        const basicEnhanced = data.locations.map(enhanceMerchantData);
+        
+        setMerchants(basicEnhanced);
+        setFilteredMerchants(basicEnhanced);
+        setDisplayedMerchants(basicEnhanced.slice(0, 50));
+        setLastUpdated(new Date().toLocaleString());
+        
+        // Cache the enhanced data for future use
+        DataManager.saveMerchantsToCache(basicEnhanced);
+        setLoading(false);
+        
+      } catch (error) {
+        console.error('Error in loadBasicData:', error);
+        throw error;
       }
     };
 
@@ -234,7 +303,7 @@ function App() {
           <h2 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Data</h2>
           <p className="text-gray-600 mb-4">{error}</p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={retryLoading}
             className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
           >
             Try Again

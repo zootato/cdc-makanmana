@@ -88,8 +88,15 @@ export class HalalService {
       const similarity = matchingWords.length / Math.max(merchantWords.length, halalWords.length);
       const hasPostalMatch = halal.postal === merchantPostal;
 
-      // Require at least 50% similarity and 2 matching words minimum
-      if (similarity >= 0.5 && matchingWords.length >= Math.min(2, merchantWords.length)) {
+      // Require very high similarity: 80% + at least 2 key words must match
+      if (similarity >= 0.8 && matchingWords.length >= 2 && merchantWords.length >= 2) {
+        console.log(`Potential halal match found:
+          Merchant: "${merchantName}"
+          MUIS: "${halal.name}"
+          Similarity: ${similarity.toFixed(2)}
+          Matching words: ${matchingWords.join(', ')}
+          Postal match: ${hasPostalMatch}`);
+
         if (!bestMatch ||
             (hasPostalMatch && !bestMatch.hasPostal) || // Prefer postal matches
             (hasPostalMatch === bestMatch.hasPostal && similarity > bestMatch.similarity)) {

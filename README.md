@@ -1,20 +1,20 @@
-# CDC GoWhere - Enhanced
+# CDC MakanMana
 
-An improved version of the CDC Vouchers website with additional filtering and real-time status features.
+An enhanced CDC Vouchers website with official halal certification verification and smart filtering.
 
 ## 🚀 Features
 
 ### Core Features
 - **Real-time Data**: Fetches live merchant data from the official CDC vouchers API
 - **Advanced Search**: Search by postal code, street name, or merchant name
-- **Smart Filtering**: Filter by halal options, vegetarian options, and open/closed status
+- **Official Halal Verification**: Uses official Singapore halal certification database
 - **Responsive Design**: Modern, mobile-friendly interface
 
 ### Enhanced Capabilities
-- **Dietary Filters**: Dedicated halal and vegetarian filtering using intelligent name detection
-- **Operating Status**: Real-time open/closed status based on business types and time patterns
+- **Smart Halal Matching**: Intelligent name similarity and postal code verification
+- **Certified Results Only**: Shows only officially verified halal establishments
 - **Cuisine Detection**: Automatic cuisine type detection from merchant names
-- **Category Sorting**: Sort by name, status, or relevance
+- **Distance-based Sorting**: Sort by proximity and name
 
 ### Technical Features
 - Built with React 18 and TypeScript
@@ -26,8 +26,8 @@ An improved version of the CDC Vouchers website with additional filtering and re
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd cdc-gowhere
+git clone https://github.com/zootato/cdc-makanmana.git
+cd cdc-makanmana
 ```
 
 2. Install dependencies:
@@ -42,27 +42,37 @@ npm start
 
 4. Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
 
+## 🚀 Live Site
+
+**GitHub Pages**: https://zootato.github.io/cdc-makanmana
+
+## 🚀 Deployment
+
+To deploy your own version:
+```bash
+npm run deploy
+```
+
 ## 📊 Data Sources
 
 - **Primary Data**: [CDC Vouchers API](http://prd-tmp.cdn.gowhere.gov.sg/assets/cdcvouchersgowhere/data.gzip?v=2)
 - **Halal Verification**: [Singapore Halal Establishments JSON](https://raw.githubusercontent.com/zootato/singapore-halal-establishments/main/halal_establishments.json)
-- **Fallback Halal Detection**: Intelligent keyword matching for non-certified establishments
+- **Verification Method**: Name similarity matching with postal code confirmation
 
 ## 🎯 Improvements Over Original
 
-1. **Better Filtering**: Halal filtering with official certification data
-2. **Modern UI**: Clean, responsive design with better UX
-3. **Enhanced Search**: More comprehensive search capabilities
-4. **Data Insights**: Display of cuisine types and business categories
+1. **Official Halal Verification**: Uses government certification database instead of keyword guessing
+2. **Smart Matching**: Handles name differences between CDC and MUIS records
+3. **Modern UI**: Clean, responsive design with better UX
+4. **Enhanced Search**: Comprehensive search with postal code and distance sorting
 
 ## 🛠️ Technical Architecture
 
 ```
 src/
-├── components/           # React components
+├── services/            # Data services (halal verification, API calls)
 ├── data/                # API interfaces and data fetching
 ├── utils/               # Utility functions for filtering and search
-├── styles/              # Tailwind CSS configuration
 └── App.tsx              # Main application component
 ```
 
@@ -70,9 +80,9 @@ src/
 
 - Map view with merchant locations
 - Reviews and ratings integration
-- Push notifications for nearby merchants
-- Offline support with cached data
 - Real-time menu information
+- Favorite merchants list
+- Advanced filtering by cuisine type
 
 ## 📱 Browser Support
 

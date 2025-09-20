@@ -1,8 +1,8 @@
 {
-  "name": "halalcdc-gowhere",
+  "name": "cdc-makanmana",
   "version": "1.0.0",
   "description": "Enhanced CDC Vouchers website with halal filtering using official certification data",
-  "homepage": "https://zootato.github.io/halalcdc-gowhere",
+  "homepage": "https://zootato.github.io/cdc-makanmana",
   "private": true,
   "dependencies": {
     "@types/node": "^18.15.0",

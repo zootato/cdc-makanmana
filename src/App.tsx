@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Filter, MapPin, Utensils, Loader2, AlertCircle, Navigation } from 'lucide-react';
+import { Search, Loader2, AlertCircle, MapPin } from 'lucide-react';
 import { Merchant } from './data/merchants';
 import { DataManager } from './services/dataManager';
 import { searchMerchants, filterMerchants, sortMerchants, FilterOptions } from './utils/merchantUtils';
 import { formatDistance } from './utils/locationUtils';
-import { fetchWithProxy } from './utils/proxyUtils';
 import './index.css';
 
 function App() {
@@ -16,7 +15,6 @@ function App() {
   const [refreshProgress, setRefreshProgress] = useState<{current: number, total: number} | null>(null);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [filteredMerchants, setFilteredMerchants] = useState<Merchant[]>([]);
   const [displayedMerchants, setDisplayedMerchants] = useState<Merchant[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -28,49 +26,8 @@ function App() {
   });
   const [sortBy, setSortBy] = useState<'name' | 'distance'>('distance');
   const [showFilters, setShowFilters] = useState(false);
-  const [showLocationSection, setShowLocationSection] = useState(false);
-  const [addressSuggestions, setAddressSuggestions] = useState<string[]>([]);
   
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch address suggestions using CDC's official API with CORS handling
-  const fetchAddressSuggestions = useCallback(async (searchValue: string) => {
-    const trimmedValue = searchValue.trim();
-    
-    // Trigger suggestions for any meaningful search (3+ characters) or postal codes
-    if (trimmedValue.length >= 3) {
-      try {
-        console.log('Fetching suggestions for:', trimmedValue);
-        // URL encode the search value (spaces become +)
-        const encodedSearch = encodeURIComponent(trimmedValue).replace(/%20/g, '+');
-        const url = `https://prd-tmp.api.gowhere.gov.sg/xgw/onemap/search?searchVal=${encodedSearch}&returnGeom=Y&getAddrDetails=Y&pageNum=1`;
-        const data = await fetchWithProxy(url);
-        
-        console.log('API response:', data);
-        
-        if (data.found > 0) {
-          const suggestions = data.results.slice(0, 5).map((result: any) => {
-            // Format like the official site
-            if (result.BUILDING && result.BUILDING !== 'NIL') {
-              return result.ADDRESS;
-            } else {
-              return `${result.BLK_NO} ${result.ROAD_NAME} Singapore ${result.POSTAL}`;
-            }
-          });
-          console.log('Setting suggestions:', suggestions);
-          setAddressSuggestions(suggestions);
-        } else {
-          console.log('No results found');
-          setAddressSuggestions([]);
-        }
-      } catch (error) {
-        console.error('Error fetching address suggestions:', error);
-        setAddressSuggestions([]);
-      }
-    } else {
-      setAddressSuggestions([]);
-    }
-  }, []);
 
   // Load merchants on component mount
   useEffect(() => {
@@ -195,22 +152,6 @@ function App() {
   };
 
   // Debounce search term to avoid API calls on every keystroke
-  useEffect(() => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-    
-    debounceRef.current = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-      fetchAddressSuggestions(searchTerm);
-    }, 300); // 300ms delay
-    
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
-  }, [searchTerm, fetchAddressSuggestions]);
 
   // Handle search with async postal code lookup
   const performSearch = useCallback(async () => {
@@ -219,7 +160,7 @@ function App() {
     // Use setTimeout to prevent UI blocking
     setTimeout(async () => {
       try {
-        let result = await searchMerchants(merchants, debouncedSearchTerm);
+        let result = await searchMerchants(merchants, searchTerm);
         result = filterMerchants(result, filters);
         result = sortMerchants(result, sortBy);
         setFilteredMerchants(result);
@@ -235,14 +176,14 @@ function App() {
       }
       setSearchLoading(false);
     }, 10); // Small delay to prevent UI blocking
-  }, [merchants, debouncedSearchTerm, filters, sortBy, showingCount]);
+  }, [merchants, searchTerm, filters, sortBy, showingCount]);
 
   // Trigger search when dependencies change (but not on initial load)
   useEffect(() => {
-    if (debouncedSearchTerm || Object.values(filters).some(v => v === true || (v !== 'all' && v !== false))) {
+    if (searchTerm || Object.values(filters).some(v => v === true || (v !== 'all' && v !== false))) {
       performSearch();
     }
-  }, [performSearch, debouncedSearchTerm, filters]);
+  }, [performSearch, searchTerm, filters]);
 
   const handleFilterChange = (key: keyof FilterOptions, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -328,7 +269,7 @@ function App() {
           {/* CDC Voucher Banner */}
           <div className="mb-8 flex justify-center">
             <img 
-              src="/cdcc_banner_may.png" 
+              src={`${process.env.PUBLIC_URL}/cdcc_banner_may.png`} 
               alt="CDC Voucher" 
               className="h-24 w-auto"
             />
@@ -338,7 +279,7 @@ function App() {
           <p className="text-lg mb-2 italic">SG60 Vouchers can be used wherever CDC Vouchers are accepted</p>
           
           <p className="text-base mb-8 max-w-2xl mx-auto">
-            Enter name of stall, street name or postal code to search for the nearest participating hawkers, heartland merchants and supermarkets.
+            Enter merchant name or 6-digit postal code to find participating hawkers, heartland merchants and supermarkets.
           </p>
 
           {/* Enhanced Search Section */}
@@ -348,24 +289,15 @@ function App() {
               <div className="flex">
                 <input
                   type="text"
-                  placeholder="Enter name of stall, street name or postal code"
+                  placeholder="Enter merchant name or postal code (e.g. 'McDonald's' or '123456')"
                   className="flex-1 px-4 py-3 text-gray-900 border-0 focus:ring-0 focus:outline-none text-base"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  onFocus={() => setShowLocationSection(true)}
-                  onBlur={() => {
-                    // Delay hiding to allow clicking on suggestions
-                    setTimeout(() => {
-                      setShowLocationSection(false);
-                      setAddressSuggestions([]);
-                    }, 150);
-                  }}
                 />
                 {searchTerm && (
                   <button
                     onClick={() => {
                       setSearchTerm('');
-                      setAddressSuggestions([]);
                     }}
                     className="px-3 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
                   >
@@ -378,69 +310,7 @@ function App() {
               </div>
             </div>
 
-            {/* Address Suggestions - Show when typing postal code */}
-            {addressSuggestions.length > 0 && (
-              <div className="bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200">
-                <div className="p-3 bg-gray-50 border-b">
-                  <span className="text-sm font-medium text-gray-700 uppercase">AREA/ADDRESS</span>
-                </div>
-                <div className="max-h-64 overflow-y-auto">
-                  {addressSuggestions.map((address, index) => (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        setSearchTerm(address);
-                        setAddressSuggestions([]);
-                        setShowLocationSection(false);
-                      }}
-                      className="w-full text-left p-3 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 flex items-center transition-colors"
-                    >
-                      <MapPin className="w-4 h-4 text-blue-600 mr-3 flex-shrink-0" />
-                      <span className="text-gray-800">{address}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
-            {/* Debug: Show if we're trying to fetch but no results */}
-            {/^\d{6}$/.test(searchTerm.trim()) && addressSuggestions.length === 0 && (
-              <div className="bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200">
-                <div className="p-3 bg-gray-50 border-b">
-                  <span className="text-sm font-medium text-gray-700 uppercase">AREA/ADDRESS</span>
-                </div>
-                <div className="p-3 text-gray-500 text-sm">
-                  <div className="flex items-center">
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    Searching for addresses...
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Location Section - Only show when search is focused and no meaningful search text */}
-            {showLocationSection && addressSuggestions.length === 0 && searchTerm.trim().length < 3 && (
-              <div className="bg-gray-100 rounded-lg shadow-lg overflow-hidden">
-                <div className="p-4 bg-gray-200 border-b">
-                  <div className="flex items-center text-gray-700">
-                    <Navigation className="w-5 h-5 mr-2 text-blue-600" />
-                    <span className="font-medium">Your location</span>
-                  </div>
-                </div>
-                
-                <div className="p-4">
-                  <div className="flex items-start space-x-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                    <div className="flex-shrink-0 w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
-                      <span className="text-white text-sm font-bold">!</span>
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-800 mb-1">We're unable to retrieve your location</p>
-                      <p className="text-sm text-gray-600">Please allow location services and try again.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {searchLoading && (
               <div className="flex items-center justify-center text-white">
@@ -450,14 +320,11 @@ function App() {
             )}
 
             {/* Search tip */}
-            {/^\d{1,6}$/.test(searchTerm) && (
+            {searchTerm && /^\d{6}$/.test(searchTerm) && (
               <div className="p-3 bg-blue-800 bg-opacity-50 rounded-lg border border-blue-300">
                 <div className="flex items-center text-sm text-blue-100">
-                  <Navigation className="w-4 h-4 mr-2" />
-                  {searchTerm.length === 6 
-                    ? "Searching by location - showing nearest merchants within 10km"
-                    : "Enter 6-digit postal code for location-based search"
-                  }
+                  <Search className="w-4 h-4 mr-2" />
+                  Showing merchants near postal code {searchTerm}
                 </div>
               </div>
             )}
@@ -524,7 +391,7 @@ function App() {
                     : 'bg-white text-red-600 border-red-600 hover:bg-red-50'
                 }`}
               >
-                <img src="/Halal-Logo.avif" alt="Halal" className="w-4 h-4" />
+                <img src={`${process.env.PUBLIC_URL}/Halal-Logo.avif`} alt="Halal" className="w-4 h-4" />
                 Halal
               </button>
               
@@ -617,7 +484,7 @@ function MerchantCard({ merchant }: MerchantCardProps) {
               {merchant.name}
             </h3>
             {merchant.isHalal && (
-              <img src="/Halal-Logo.avif" alt="Halal" className="w-5 h-5" />
+              <img src={`${process.env.PUBLIC_URL}/Halal-Logo.avif`} alt="Halal" className="w-5 h-5" />
             )}
           </div>
           {merchant.distance && (

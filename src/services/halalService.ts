@@ -38,81 +38,129 @@ export class HalalService {
   static async isHalal(merchant: Merchant): Promise<{ isHalal: boolean; source: string; certNumber?: string }> {
     await this.initialize();
 
-    // Try to match by postal code first (most reliable)
-    const postalMatch = this.halalEstablishments.find(halal =>
-      halal.postal === merchant.postalCode
-    );
+    // Primary matching: Find the best name match
+    const bestMatch = this.findBestNameMatch(merchant.name, merchant.postalCode);
 
-    if (postalMatch) {
-      // Double check with name similarity for postal matches
-      if (this.namesAreSimilar(merchant.name, postalMatch.name)) {
-        return {
-          isHalal: true,
-          source: 'MUIS_VERIFIED_POSTAL_NAME',
-          certNumber: postalMatch.number
-        };
-      }
-      // Even if names don't match exactly, postal code match is strong indicator
+    if (bestMatch) {
       return {
         isHalal: true,
-        source: 'MUIS_VERIFIED_POSTAL',
-        certNumber: postalMatch.number
+        source: bestMatch.source,
+        certNumber: bestMatch.establishment.number
       };
     }
 
-    // Try to match by name similarity
-    const nameMatch = this.findBestNameMatch(merchant.name);
-    if (nameMatch) {
-      return {
-        isHalal: true,
-        source: 'MUIS_VERIFIED_NAME',
-        certNumber: nameMatch.number
-      };
-    }
-
-    // Fallback to keyword detection for potential halal establishments
-    if (this.detectHalalKeywords(merchant.name)) {
-      return {
-        isHalal: true,
-        source: 'KEYWORD_DETECTED'
-      };
-    }
-
+    // Only return halal if found in official records
     return {
       isHalal: false,
-      source: 'NOT_DETECTED'
+      source: 'NOT_IN_OFFICIAL_RECORDS'
     };
   }
 
-  private static findBestNameMatch(merchantName: string): HalalEstablishment | null {
+  private static findBestNameMatch(merchantName: string, merchantPostal: string): { establishment: HalalEstablishment; source: string } | null {
     const cleanMerchantName = this.cleanName(merchantName);
 
-    // Direct exact match
-    let bestMatch = this.halalEstablishments.find(halal =>
+    // 1. Perfect match: Exact name + postal confirmation
+    const exactNameMatch = this.halalEstablishments.find(halal =>
       this.cleanName(halal.name) === cleanMerchantName
     );
 
-    if (bestMatch) return bestMatch;
+    if (exactNameMatch) {
+      if (exactNameMatch.postal === merchantPostal) {
+        return { establishment: exactNameMatch, source: 'MUIS_VERIFIED_EXACT_POSTAL' };
+      }
+      return { establishment: exactNameMatch, source: 'MUIS_VERIFIED_EXACT_NAME' };
+    }
 
-    // Partial word matching
+    // 2. High similarity match with postal confirmation
     const merchantWords = cleanMerchantName.split(' ').filter(word => word.length > 2);
+    let bestMatch: { establishment: HalalEstablishment; similarity: number; hasPostal: boolean } | null = null;
 
     for (const halal of this.halalEstablishments) {
       const halalWords = this.cleanName(halal.name).split(' ').filter(word => word.length > 2);
 
-      // Check if at least 60% of merchant words match halal words
+      // Calculate similarity score
       const matchingWords = merchantWords.filter(word =>
         halalWords.some(halalWord =>
-          halalWord.includes(word) || word.includes(halalWord)
+          halalWord.includes(word) || word.includes(halalWord) || this.isWordSimilar(word, halalWord)
         )
       );
 
-      if (matchingWords.length >= Math.min(2, merchantWords.length * 0.6)) {
-        return halal;
+      const similarity = matchingWords.length / Math.max(merchantWords.length, halalWords.length);
+      const hasPostalMatch = halal.postal === merchantPostal;
+
+      // Require at least 50% similarity and 2 matching words minimum
+      if (similarity >= 0.5 && matchingWords.length >= Math.min(2, merchantWords.length)) {
+        if (!bestMatch ||
+            (hasPostalMatch && !bestMatch.hasPostal) || // Prefer postal matches
+            (hasPostalMatch === bestMatch.hasPostal && similarity > bestMatch.similarity)) {
+          bestMatch = { establishment: halal, similarity, hasPostal: hasPostalMatch };
+        }
       }
     }
 
+    if (bestMatch) {
+      if (bestMatch.hasPostal) {
+        return { establishment: bestMatch.establishment, source: 'MUIS_VERIFIED_SIMILAR_POSTAL' };
+      }
+      return { establishment: bestMatch.establishment, source: 'MUIS_VERIFIED_SIMILAR_NAME' };
+    }
+
     return null;
+  }
+
+  private static isWordSimilar(word1: string, word2: string): boolean {
+    // Check for common abbreviations and variations
+    const commonVariations: { [key: string]: string[] } = {
+      'restaurant': ['rest', 'resto'],
+      'kitchen': ['kitchn', 'kitch'],
+      'food': ['fd'],
+      'house': ['hse'],
+      'corner': ['cnr'],
+      'centre': ['center', 'ctr'],
+      'international': ['intl'],
+      'company': ['co'],
+      'private': ['pte', 'pvt'],
+      'limited': ['ltd']
+    };
+
+    for (const [full, abbrevs] of Object.entries(commonVariations)) {
+      if ((word1 === full && abbrevs.includes(word2)) ||
+          (word2 === full && abbrevs.includes(word1)) ||
+          (abbrevs.includes(word1) && abbrevs.includes(word2))) {
+        return true;
+      }
+    }
+
+    // Check for simple character similarity (at least 80% similar)
+    const longer = word1.length > word2.length ? word1 : word2;
+    const shorter = word1.length > word2.length ? word2 : word1;
+
+    if (longer.length === 0) return false;
+
+    const editDistance = this.levenshteinDistance(longer, shorter);
+    const similarity = (longer.length - editDistance) / longer.length;
+
+    return similarity >= 0.8;
+  }
+
+  private static levenshteinDistance(str1: string, str2: string): number {
+    const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
+
+    for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+    for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+
+    for (let j = 1; j <= str2.length; j++) {
+      for (let i = 1; i <= str1.length; i++) {
+        const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        matrix[j][i] = Math.min(
+          matrix[j][i - 1] + 1,
+          matrix[j - 1][i] + 1,
+          matrix[j - 1][i - 1] + indicator
+        );
+      }
+    }
+
+    return matrix[str2.length][str1.length];
   }
 
   private static cleanName(name: string): string {
@@ -125,37 +173,5 @@ export class HalalService {
       .trim();
   }
 
-  private static namesAreSimilar(name1: string, name2: string): boolean {
-    const clean1 = this.cleanName(name1);
-    const clean2 = this.cleanName(name2);
 
-    // Exact match
-    if (clean1 === clean2) return true;
-
-    // One contains the other
-    if (clean1.includes(clean2) || clean2.includes(clean1)) return true;
-
-    // Word-based similarity
-    const words1 = clean1.split(' ').filter(w => w.length > 2);
-    const words2 = clean2.split(' ').filter(w => w.length > 2);
-
-    if (words1.length === 0 || words2.length === 0) return false;
-
-    const commonWords = words1.filter(word =>
-      words2.some(w2 => w2.includes(word) || word.includes(w2))
-    );
-
-    return commonWords.length >= Math.min(words1.length, words2.length) * 0.5;
-  }
-
-  private static detectHalalKeywords(name: string): boolean {
-    const halalKeywords = [
-      'halal', 'muslim', 'islamic', 'bismillah', 'salam', 'warung',
-      'nasi padang', 'makan', 'ayam', 'kambing', 'rendang', 'satay',
-      'kebab', 'turkish', 'arab', 'middle east', 'biryani', 'roti prata'
-    ];
-
-    const lowerName = name.toLowerCase();
-    return halalKeywords.some(keyword => lowerName.includes(keyword));
-  }
 }

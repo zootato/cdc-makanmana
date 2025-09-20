@@ -1,0 +1,17 @@
+{
+  "files": {
+    "main.css": "/cdc-makanmana/static/css/main.1666841c.css",
+    "main.js": "/cdc-makanmana/static/js/main.ffd552d1.js",
+    "static/js/248.4a9d35e2.chunk.js": "/cdc-makanmana/static/js/248.4a9d35e2.chunk.js",
+    "static/js/124.9bc4aae6.chunk.js": "/cdc-makanmana/static/js/124.9bc4aae6.chunk.js",
+    "index.html": "/cdc-makanmana/index.html",
+    "main.1666841c.css.map": "/cdc-makanmana/static/css/main.1666841c.css.map",
+    "main.ffd552d1.js.map": "/cdc-makanmana/static/js/main.ffd552d1.js.map",
+    "248.4a9d35e2.chunk.js.map": "/cdc-makanmana/static/js/248.4a9d35e2.chunk.js.map",
+    "124.9bc4aae6.chunk.js.map": "/cdc-makanmana/static/js/124.9bc4aae6.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.1666841c.css",
+    "static/js/main.ffd552d1.js"
+  ]
+}

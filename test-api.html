@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CDC API Test</title>
+</head>
+<body>
+    <h1>CDC API Test</h1>
+    <button onclick="testAPI()">Test CDC API</button>
+    <div id="results"></div>
+
+    <script>
+        async function testAPI() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<p>Testing...</p>';
+            
+            try {
+                console.log('Testing CDC API...');
+                const response = await fetch('https://prd-tmp.cdn.gowhere.gov.sg/assets/cdcvouchersgowhere/data.gzip?v=2', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json, */*',
+                        'Accept-Encoding': 'gzip, deflate, br',
+                    }
+                });
+                
+                console.log('Response:', response);
+                console.log('Status:', response.status);
+                console.log('Headers:', Object.fromEntries(response.headers.entries()));
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Data:', data);
+                    results.innerHTML = `
+                        <h3>✅ Success!</h3>
+                        <p>Status: ${response.status}</p>
+                        <p>Merchants: ${data.locations?.length || 0}</p>
+                        <p>First merchant: ${data.locations?.[0]?.name || 'N/A'}</p>
+                    `;
+                } else {
+                    results.innerHTML = `
+                        <h3>❌ HTTP Error</h3>
+                        <p>Status: ${response.status}</p>
+                        <p>Status Text: ${response.statusText}</p>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                results.innerHTML = `
+                    <h3>❌ Network Error</h3>
+                    <p>Error: ${error.message}</p>
+                    <p>This is likely a CORS issue</p>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

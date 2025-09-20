@@ -132,8 +132,10 @@ export class HalalService {
       const similarity = matchingWords.length / Math.max(merchantWords.length, halalWords.length);
       const hasPostalMatch = halal.postal === merchantPostal;
 
-      // VERY STRICT: Require 90% similarity + at least 2 key words + significant overlap
-      if (similarity >= 0.9 && matchingWords.length >= 2 && merchantWords.length >= 2) {
+      // EXTREMELY STRICT: Require exact business name match + postal code OR very specific keywords
+      const hasSpecificMatch = this.hasSpecificBusinessMatch(merchantWords, halalWords, matchingWords);
+
+      if (similarity >= 0.95 && matchingWords.length >= 3 && hasSpecificMatch) {
         console.log(`🕌 POTENTIAL HALAL MATCH:
           CDC: "${merchantName}" (postal: ${merchantPostal})
           MUIS: "${halal.name}" (postal: ${halal.postal})
@@ -146,6 +148,18 @@ export class HalalService {
             (hasPostalMatch === bestMatch.hasPostal && similarity > bestMatch.similarity)) {
           bestMatch = { establishment: halal, similarity, hasPostal: hasPostalMatch };
         }
+      } else if (similarity >= 0.8 && matchingWords.length >= 2) {
+        // Log why this was rejected
+        const specificMatches = matchingWords.filter(word =>
+          !['western', 'food', 'kitchen', 'restaurant', 'cafe', 'stall', 'house', 'corner',
+            'snack', 'delight', 'express', 'garden', 'center', 'place', 'shop', 'store',
+            'pte', 'ltd', 'private', 'limited', 'trading', 'enterprise', 'company'].includes(word.toLowerCase())
+        );
+
+        console.log(`❌ REJECTED MATCH: "${merchantName}" vs "${halal.name}"
+          Reason: Similarity ${(similarity * 100).toFixed(1)}% (need 95%+), ${matchingWords.length} matches (need 3+), ${specificMatches.length} specific matches (need 2+)
+          Matching words: [${matchingWords.join(', ')}]
+          Specific matches: [${specificMatches.join(', ')}]`);
       }
     }
 
@@ -160,6 +174,21 @@ export class HalalService {
 
     console.log(`❌ NOT HALAL: "${merchantName}" - no match found in MUIS database`);
     return null;
+  }
+
+  private static hasSpecificBusinessMatch(merchantWords: string[], halalWords: string[], matchingWords: string[]): boolean {
+    // Generic words that shouldn't be the primary basis for matching
+    const genericWords = new Set([
+      'western', 'food', 'kitchen', 'restaurant', 'cafe', 'stall', 'house', 'corner',
+      'snack', 'delight', 'express', 'garden', 'center', 'place', 'shop', 'store',
+      'pte', 'ltd', 'private', 'limited', 'trading', 'enterprise', 'company'
+    ]);
+
+    // Check if there's at least one specific (non-generic) word match
+    const specificMatches = matchingWords.filter(word => !genericWords.has(word.toLowerCase()));
+
+    // Must have at least 2 specific word matches OR exact postal code match
+    return specificMatches.length >= 2;
   }
 
   private static isWordSimilar(word1: string, word2: string): boolean {

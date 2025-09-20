@@ -126,6 +126,9 @@ export const filterMerchants = async (
 
     console.log(`🔍 Checking halal status for ${merchants.length} merchants...`);
 
+    // Initialize once before processing all merchants
+    await HalalService.initialize();
+
     const halalCheckedMerchants = await Promise.all(
       merchants.map(async (merchant) => {
         // Always recheck to ensure accuracy (remove caching for now)

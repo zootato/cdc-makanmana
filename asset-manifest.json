@@ -1,19 +1,19 @@
 {
   "files": {
     "main.css": "/cdc-makanmana/static/css/main.18447a17.css",
-    "main.js": "/cdc-makanmana/static/js/main.966ffe87.js",
+    "main.js": "/cdc-makanmana/static/js/main.65301a2b.js",
     "static/js/887.a3697555.chunk.js": "/cdc-makanmana/static/js/887.a3697555.chunk.js",
     "static/js/124.9bc4aae6.chunk.js": "/cdc-makanmana/static/js/124.9bc4aae6.chunk.js",
-    "static/js/248.047237e5.chunk.js": "/cdc-makanmana/static/js/248.047237e5.chunk.js",
+    "static/js/248.e8b43f54.chunk.js": "/cdc-makanmana/static/js/248.e8b43f54.chunk.js",
     "index.html": "/cdc-makanmana/index.html",
     "main.18447a17.css.map": "/cdc-makanmana/static/css/main.18447a17.css.map",
-    "main.966ffe87.js.map": "/cdc-makanmana/static/js/main.966ffe87.js.map",
+    "main.65301a2b.js.map": "/cdc-makanmana/static/js/main.65301a2b.js.map",
     "887.a3697555.chunk.js.map": "/cdc-makanmana/static/js/887.a3697555.chunk.js.map",
     "124.9bc4aae6.chunk.js.map": "/cdc-makanmana/static/js/124.9bc4aae6.chunk.js.map",
-    "248.047237e5.chunk.js.map": "/cdc-makanmana/static/js/248.047237e5.chunk.js.map"
+    "248.e8b43f54.chunk.js.map": "/cdc-makanmana/static/js/248.e8b43f54.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.18447a17.css",
-    "static/js/main.966ffe87.js"
+    "static/js/main.65301a2b.js"
   ]
 }

@@ -29,25 +29,12 @@ export interface CDCApiResponse {
 export interface Merchant extends CDCApiMerchant {
   // Additional fields we'll enhance with
   isHalal?: boolean;
-  isVegetarian?: boolean;
-  hasVegetarianOptions?: boolean;
   cuisine?: string[];
-  operatingHours?: {
-    monday?: string;
-    tuesday?: string;
-    wednesday?: string;
-    thursday?: string;
-    friday?: string;
-    saturday?: string;
-    sunday?: string;
-  };
   phone?: string;
   description?: string;
-  isOpen?: boolean;
   distance?: number; // Distance in kilometers
   businessCategory?: string;
   halalSource?: string;
-  hoursSource?: 'GOOGLE_MAPS' | 'ONEMAP_ESTIMATED' | 'FALLBACK';
 }
 
 // API service for fetching CDC vouchers data
@@ -98,13 +85,17 @@ export const fetchCDCMerchants = async (): Promise<CDCApiResponse> => {
 };
 
 // Enhanced merchant detection based on name patterns (basic version)
-export const enhanceMerchantData = (merchant: CDCApiMerchant): Merchant => {
+export const enhanceMerchantData = async (merchant: CDCApiMerchant): Promise<Merchant> => {
   const name = merchant.name.toLowerCase();
+
+  // Import halal service dynamically
+  const { HalalService } = await import('../services/halalService');
+  const halalResult = await HalalService.isHalal(merchant as Merchant);
+
   const enhanced: Merchant = {
     ...merchant,
-    isHalal: detectHalal(name),
-    isVegetarian: detectVegetarian(name),
-    hasVegetarianOptions: detectVegetarianOptions(name),
+    isHalal: halalResult.isHalal,
+    halalSource: halalResult.source,
     cuisine: detectCuisine(name),
   };
 
@@ -131,30 +122,7 @@ export const enhanceMerchantDataWithExternalSources = async (merchant: CDCApiMer
   }
 };
 
-const detectHalal = (name: string): boolean => {
-  const halalKeywords = [
-    'halal', 'muslim', 'islamic', 'bismillah', 'salam', 'warung', 
-    'nasi padang', 'makan', 'ayam', 'kambing', 'rendang', 'satay',
-    'kebab', 'turkish', 'arab', 'middle east', 'biryani'
-  ];
-  return halalKeywords.some(keyword => name.includes(keyword));
-};
 
-const detectVegetarian = (name: string): boolean => {
-  const vegetarianKeywords = [
-    'vegetarian', 'vegan', 'veggie', 'loving hut', 'temple', 
-    'buddhist', 'monk', 'green', 'plant based'
-  ];
-  return vegetarianKeywords.some(keyword => name.includes(keyword));
-};
-
-const detectVegetarianOptions = (name: string): boolean => {
-  const vegOptionsKeywords = [
-    'vegetables', 'veggie', 'tofu', 'bean curd', 'mixed rice',
-    'cai png', 'economy rice', 'zi char', 'chinese', 'indian'
-  ];
-  return vegOptionsKeywords.some(keyword => name.includes(keyword));
-};
 
 const detectCuisine = (name: string): string[] => {
   const cuisineMap: { [key: string]: string[] } = {

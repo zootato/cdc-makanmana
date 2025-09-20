@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Filter, MapPin, Clock, Utensils, Loader2, AlertCircle, Navigation } from 'lucide-react';
+import { Search, Filter, MapPin, Utensils, Loader2, AlertCircle, Navigation } from 'lucide-react';
 import { Merchant } from './data/merchants';
 import { DataManager } from './services/dataManager';
-import { searchMerchants, filterMerchants, sortMerchants, getOperatingStatus, FilterOptions } from './utils/merchantUtils';
+import { searchMerchants, filterMerchants, sortMerchants, FilterOptions } from './utils/merchantUtils';
 import { formatDistance } from './utils/locationUtils';
 import { fetchWithProxy } from './utils/proxyUtils';
 import './index.css';
@@ -23,11 +23,10 @@ function App() {
   const [showingCount, setShowingCount] = useState(50); // Initial display limit
   const [filters, setFilters] = useState<FilterOptions>({
     showHalalOnly: false,
-    showOpenOnly: false,
     showBudgetMeals: false,
     category: 'all'
   });
-  const [sortBy, setSortBy] = useState<'name' | 'distance' | 'status'>('distance');
+  const [sortBy, setSortBy] = useState<'name' | 'distance'>('distance');
   const [showFilters, setShowFilters] = useState(false);
   const [showLocationSection, setShowLocationSection] = useState(false);
   const [addressSuggestions, setAddressSuggestions] = useState<string[]>([]);
@@ -75,43 +74,42 @@ function App() {
 
   // Load merchants on component mount
   useEffect(() => {
-    const loadMerchants = async () => {
+    const loadBackupData = async () => {
       try {
-        setLoading(true);
-        setError(null);
-        
-        // Check if we have valid cached data
-        if (DataManager.hasValidCachedData()) {
-          console.log('Loading from cache...');
-          const cachedMerchants = DataManager.loadCachedMerchants();
-          
-          if (cachedMerchants.length > 0) {
-            setMerchants(cachedMerchants);
-            setFilteredMerchants(cachedMerchants);
-            setDisplayedMerchants(cachedMerchants.slice(0, 50));
-            setDataSource('cache');
-            
-            const cacheInfo = DataManager.getCacheInfo();
-            setLastUpdated(cacheInfo.lastUpdate || 'Unknown');
-            setLoading(false);
-            return;
-          }
+        console.log('Loading backup data...');
+        const response = await fetch('/backup-data.json');
+        if (!response.ok) {
+          throw new Error(`Backup data not found: ${response.status}`);
         }
         
-        // Load data from CDC API
-        console.log('Loading data from CDC API...');
-        try {
-          await loadBasicData();
-        } catch (apiError) {
-          console.warn('CDC API failed, trying backup data...', apiError);
-          await loadBackupData();
-        }
+        const data = await response.json();
+        console.log('Backup data loaded:', data.locations?.length, 'merchants');
         
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        setError(`Failed to load merchant data: ${errorMessage}. Please check the console for details.`);
-        console.error('Error loading merchants:', err);
+        // Convert backup data to our Merchant format
+        const { enhanceMerchantData } = await import('./data/merchants');
+        const basicLocations = data.locations.map((location: any) => ({
+          ...location,
+          // Map the backup data fields to our expected format
+          latitude: location.LAT,
+          longitude: location.LON,
+          isHalal: location.isHalal || false
+        }));
+
+        const merchants = await Promise.all(basicLocations.map(enhanceMerchantData));
+        
+        setMerchants(merchants);
+        setFilteredMerchants(merchants);
+        setDisplayedMerchants(merchants.slice(0, 50));
+        setLastUpdated(data.lastUpdated || 'Backup data');
+        setDataSource('fresh');
+        
+        // Cache the backup data
+        DataManager.saveMerchantsToCache(merchants);
         setLoading(false);
+        
+      } catch (error) {
+        console.error('Error loading backup data:', error);
+        throw error;
       }
     };
 
@@ -124,7 +122,7 @@ function App() {
         const data = await fetchCDCMerchants();
         
         // Use basic enhancement only (fast keyword-based detection)
-        const basicEnhanced = data.locations.map(enhanceMerchantData);
+        const basicEnhanced = await Promise.all(data.locations.map(enhanceMerchantData));
         
         setMerchants(basicEnhanced);
         setFilteredMerchants(basicEnhanced);
@@ -144,13 +142,6 @@ function App() {
       }
     };
 
-    loadMerchants();
-  }, []);
-
-  const retryLoading = () => {
-    setError(null);
-    setLoading(true);
-    
     const loadMerchants = async () => {
       try {
         setLoading(true);
@@ -191,73 +182,17 @@ function App() {
       }
     };
 
-    const loadBasicData = async () => {
-      try {
-        // Import the basic functions
-        const { fetchCDCMerchants, enhanceMerchantData } = await import('./data/merchants');
-        
-        setDataSource('fresh');
-        const data = await fetchCDCMerchants();
-        
-        // Use basic enhancement only (fast keyword-based detection)
-        const basicEnhanced = data.locations.map(enhanceMerchantData);
-        
-        setMerchants(basicEnhanced);
-        setFilteredMerchants(basicEnhanced);
-        setDisplayedMerchants(basicEnhanced.slice(0, 50));
-        setLastUpdated(new Date().toLocaleString());
-        
-        // Cache the enhanced data for future use
-        DataManager.saveMerchantsToCache(basicEnhanced);
-        setLoading(false);
-        
-      } catch (error) {
-        console.error('Error in loadBasicData:', error);
-        throw error;
-      }
-    };
-
-    const loadBackupData = async () => {
-      try {
-        console.log('Loading backup data...');
-        const response = await fetch('/backup-data.json');
-        if (!response.ok) {
-          throw new Error(`Backup data not found: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        console.log('Backup data loaded:', data.locations?.length, 'merchants');
-        
-        // Convert backup data to our Merchant format
-        const { enhanceMerchantData } = await import('./data/merchants');
-        const merchants = data.locations.map((location: any) => ({
-          ...location,
-          // Map the backup data fields to our expected format
-          latitude: location.LAT,
-          longitude: location.LON,
-          isHalal: location.isHalal || false,
-          isOpen: location.isOpen || true,
-          status: location.status || 'Unknown'
-        })).map(enhanceMerchantData);
-        
-        setMerchants(merchants);
-        setFilteredMerchants(merchants);
-        setDisplayedMerchants(merchants.slice(0, 50));
-        setLastUpdated(data.lastUpdated || 'Backup data');
-        setDataSource('fresh');
-        
-        // Cache the backup data
-        DataManager.saveMerchantsToCache(merchants);
-        setLoading(false);
-        
-      } catch (error) {
-        console.error('Error loading backup data:', error);
-        throw error;
-      }
-    };
-
     loadMerchants();
   }, []);
+
+  const retryLoading = () => {
+    // Simply re-trigger the useEffect by updating a state
+    setError(null);
+    setLoading(true);
+    // Trigger a fresh load by clearing cache
+    DataManager.clearCache();
+    window.location.reload();
+  };
 
   // Debounce search term to avoid API calls on every keystroke
   useEffect(() => {
@@ -316,7 +251,6 @@ function App() {
   const clearFilters = () => {
     setFilters({
       showHalalOnly: false,
-      showOpenOnly: false,
       showBudgetMeals: false,
       category: 'all'
     });
@@ -594,16 +528,7 @@ function App() {
                 Halal
               </button>
               
-              <button
-                onClick={() => handleFilterChange('showOpenOnly', !filters.showOpenOnly)}
-                className={`px-4 py-2 rounded-full border-2 font-medium transition-colors ${
-                  filters.showOpenOnly
-                    ? 'bg-red-600 text-white border-red-600'
-                    : 'bg-white text-red-600 border-red-600 hover:bg-red-50'
-                }`}
-              >
-                🟢 Open Now
-              </button>
+
 
               {activeFiltersCount > 0 && (
                 <button
@@ -669,8 +594,6 @@ interface MerchantCardProps {
 }
 
 function MerchantCard({ merchant }: MerchantCardProps) {
-  const status = getOperatingStatus(merchant);
-
   return (
     <div className="bg-white rounded-lg border border-gray-200 mb-4">
       {/* Category Header */}
@@ -683,24 +606,6 @@ function MerchantCard({ merchant }: MerchantCardProps) {
             <div className="px-3 py-1 bg-orange-500 text-black text-sm font-medium uppercase tracking-wide rounded">
               BUDGET MEALS
             </div>
-          )}
-        </div>
-        
-        {/* Status Badge - Top Right */}
-        <div className="flex gap-2">
-          <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-            status.isOpen 
-              ? 'bg-green-600 text-white' 
-              : 'bg-red-600 text-white'
-          }`}>
-            {status.isOpen ? '🟢 Open' : '🔴 Closed'}
-          </span>
-          {merchant.operatingHours && (
-            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-600 text-white">
-              {merchant.hoursSource === 'GOOGLE_MAPS' ? '🗺️ Google Hours' : 
-               merchant.hoursSource === 'ONEMAP_ESTIMATED' ? '📍 OneMap Hours' : 
-               '⏰ Real Hours'}
-            </span>
           )}
         </div>
       </div>
@@ -738,11 +643,7 @@ function MerchantCard({ merchant }: MerchantCardProps) {
 
 
 
-        {status.nextChange && (
-          <div className="text-xs text-gray-500 italic">
-            {status.nextChange}
-          </div>
-        )}
+
 
 
       </div>

@@ -14,14 +14,10 @@ export interface EnhancedMerchantCSV {
   lastResetDate: string;
   budgetmeal: boolean;
   isHalal: boolean;
-  isVegetarian: boolean;
-  hasVegetarianOptions: boolean;
   cuisine: string; // JSON string of array
-  operatingHours: string; // JSON string of operating hours object
   phone?: string;
   businessCategory?: string;
   halalSource: string;
-  hoursSource: string;
   lastUpdated: string;
   dataVersion: string;
 }
@@ -94,14 +90,10 @@ export class DataManager {
       lastResetDate: merchant.lastResetDate,
       budgetmeal: merchant.filters?.secondary?.budgetmeal || false,
       isHalal: merchant.isHalal || false,
-      isVegetarian: merchant.isVegetarian || false,
-      hasVegetarianOptions: merchant.hasVegetarianOptions || false,
       cuisine: JSON.stringify(merchant.cuisine || []),
-      operatingHours: JSON.stringify(merchant.operatingHours || {}),
       phone: merchant.phone,
       businessCategory: merchant.businessCategory,
       halalSource: merchant.halalSource || 'KEYWORD_CHECKED',
-      hoursSource: merchant.hoursSource || 'FALLBACK',
       lastUpdated: new Date().toISOString(),
       dataVersion: this.DATA_VERSION
     };
@@ -129,14 +121,10 @@ export class DataManager {
       },
       lastResetDate: csv.lastResetDate,
       isHalal: csv.isHalal,
-      isVegetarian: csv.isVegetarian,
-      hasVegetarianOptions: csv.hasVegetarianOptions,
       cuisine: JSON.parse(csv.cuisine || '[]'),
-      operatingHours: JSON.parse(csv.operatingHours || '{}'),
       phone: csv.phone,
       businessCategory: csv.businessCategory,
-      halalSource: csv.halalSource,
-      hoursSource: csv.hoursSource as 'GOOGLE_MAPS' | 'ONEMAP_ESTIMATED' | 'FALLBACK'
+      halalSource: csv.halalSource
     };
   }
   
@@ -273,6 +261,18 @@ export class DataManager {
       version,
       merchantCount: cachedData ? JSON.parse(cachedData).length : 0
     };
+  }
+  
+  // Clear all cached data
+  static clearCache(): void {
+    try {
+      localStorage.removeItem(this.STORAGE_KEY);
+      localStorage.removeItem(this.LAST_UPDATE_KEY);
+      localStorage.removeItem(this.VERSION_KEY);
+      console.log('Cache cleared successfully');
+    } catch (error) {
+      console.error('Error clearing cache:', error);
+    }
   }
 
   // Export merchants to CSV string

@@ -3,124 +3,13 @@ import { geocodePostalCode, calculateDistance } from './locationUtils';
 
 export interface FilterOptions {
   showHalalOnly: boolean;
-  showOpenOnly: boolean;
   showBudgetMeals: boolean;
   category?: 'hawker' | 'heartland' | 'supermarket' | 'all';
 }
 
-export const isOpen = (merchant: Merchant): boolean => {
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
-  const currentTime = currentHour * 100 + currentMinute;
-  const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase() as keyof NonNullable<Merchant['operatingHours']>;
-  
-  // Use real operating hours if available
-  if (merchant.operatingHours && merchant.operatingHours[currentDay]) {
-    const dayHours = merchant.operatingHours[currentDay];
-    
-    if (dayHours === 'Closed' || !dayHours) {
-      return false;
-    }
-    
-    // Parse hours format "HH:MM-HH:MM"
-    const timeMatch = dayHours.match(/(\d{2}):(\d{2})-(\d{2}):(\d{2})/);
-    if (timeMatch) {
-      const [, openHour, openMin, closeHour, closeMin] = timeMatch.map(Number);
-      const openTime = openHour * 100 + openMin;
-      const closeTime = closeHour * 100 + closeMin;
-      
-      // Handle overnight hours (e.g., 22:00-02:00)
-      if (closeTime < openTime) {
-        return currentTime >= openTime || currentTime <= closeTime;
-      }
-      
-      return currentTime >= openTime && currentTime <= closeTime;
-    }
-  }
-  
-  // Fallback to estimated hours based on merchant type and name patterns
-  const name = merchant.name.toLowerCase();
-  
-  // Most hawker centers and food courts
-  if (merchant.type === "HAWKER_HEARTLAND_MERCHANT") {
-    // Coffee shops and breakfast places
-    if (name.includes('coffee') || name.includes('kopi') || name.includes('breakfast')) {
-      return currentHour >= 6 && currentHour <= 14; // 6 AM - 2 PM
-    }
-    
-    // Dinner/supper places
-    if (name.includes('zi char') || name.includes('steamboat') || name.includes('bbq')) {
-      return currentHour >= 17 && currentHour <= 2; // 5 PM - 2 AM
-    }
-    
-    // Healthcare services
-    if (name.includes('massage') || name.includes('wellness') || name.includes('spa') || name.includes('reflexology')) {
-      return currentHour >= 10 && currentHour <= 22; // 10 AM - 10 PM
-    }
-    
-    // General food stalls
-    return currentHour >= 8 && currentHour <= 20; // 8 AM - 8 PM
-  }
-  
-  // Supermarkets typically open longer
-  if (merchant.type === "SUPERMARKET") {
-    return currentHour >= 7 && currentHour <= 23; // 7 AM - 11 PM
-  }
-  
-  // Default: 8 AM - 8 PM
-  return currentHour >= 8 && currentHour <= 20;
-};
 
-export const getOperatingStatus = (merchant: Merchant): {
-  isOpen: boolean;
-  status: string;
-  nextChange?: string;
-} => {
-  const merchantIsOpen = isOpen(merchant);
-  const now = new Date();
-  const currentHour = now.getHours();
-  const name = merchant.name.toLowerCase();
-  
-  // Estimated hours based on merchant type (placeholder logic)
-  let estimatedHours = { open: 8, close: 20 }; // Default 8 AM - 8 PM
-  
-  if (merchant.type === "HAWKER_HEARTLAND_MERCHANT") {
-    if (name.includes('coffee') || name.includes('kopi') || name.includes('breakfast')) {
-      estimatedHours = { open: 6, close: 14 }; // 6 AM - 2 PM
-    } else if (name.includes('zi char') || name.includes('steamboat') || name.includes('bbq')) {
-      estimatedHours = { open: 17, close: 24 }; // 5 PM - 12 AM
-    } else if (name.includes('massage') || name.includes('wellness') || name.includes('spa')) {
-      estimatedHours = { open: 10, close: 22 }; // 10 AM - 10 PM
-    }
-  } else if (merchant.type === "SUPERMARKET") {
-    estimatedHours = { open: 7, close: 23 }; // 7 AM - 11 PM
-  }
-  
-  if (merchantIsOpen) {
-    const closeTime = estimatedHours.close > 24 ? 
-      `${estimatedHours.close - 24}:00 AM` : 
-      `${estimatedHours.close}:00`;
-    return {
-      isOpen: true,
-      status: 'Open',
-      nextChange: `Estimated to close at ${closeTime}`
-    };
-  } else {
-    let nextOpenTime = '';
-    if (currentHour < estimatedHours.open) {
-      nextOpenTime = `${estimatedHours.open}:00 today`;
-    } else {
-      nextOpenTime = `${estimatedHours.open}:00 tomorrow`;
-    }
-    
-    return {
-      isOpen: false,
-      status: 'Closed',
-      nextChange: `Estimated to open at ${nextOpenTime}`
-    };
-  }
-};
+
+
 
 export const searchMerchants = async (
   merchants: Merchant[],
@@ -239,10 +128,7 @@ export const filterMerchants = (
     
 
     
-    // Open/closed filter
-    if (filters.showOpenOnly && !isOpen(merchant)) {
-      return false;
-    }
+
     
     // Budget meals filter (based on merchant name patterns)
     if (filters.showBudgetMeals && !isBudgetMeal(merchant)) {
@@ -269,20 +155,10 @@ const isBudgetMeal = (merchant: Merchant): boolean => {
   return merchant.filters?.secondary?.budgetmeal === true;
 };
 
-export const sortMerchants = (merchants: Merchant[], sortBy: 'name' | 'distance' | 'status'): Merchant[] => {
+export const sortMerchants = (merchants: Merchant[], sortBy: 'name' | 'distance'): Merchant[] => {
   return [...merchants].sort((a, b) => {
     switch (sortBy) {
       case 'name':
-        return a.name.localeCompare(b.name);
-      case 'status':
-        const aOpen = isOpen(a);
-        const bOpen = isOpen(b);
-        if (aOpen && !bOpen) return -1;
-        if (!aOpen && bOpen) return 1;
-        // If same status, sort by distance if available, then name
-        if (a.distance !== undefined && b.distance !== undefined) {
-          return a.distance - b.distance;
-        }
         return a.name.localeCompare(b.name);
       case 'distance':
         // Sort by distance if available

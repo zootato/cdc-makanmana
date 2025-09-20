@@ -18,9 +18,37 @@
 .env.test.local
 .env.production.local
 
+# Environment files (secrets)
+.env
+.env.*
+!.env.example
+!.env.template
+
+# API Keys and Secrets
+**/secrets.json
+**/config/secrets.json
+**/api-keys.json
+secrets_to_remove.txt
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Local Netlify folder
-.netlify
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# IDE and editor files
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Log files
+*.log
+logs/
+
+# Cache directories
+.cache/
+.parcel-cache/

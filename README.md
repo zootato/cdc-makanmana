@@ -45,17 +45,15 @@ npm start
 ## 📊 Data Sources
 
 - **Primary Data**: [CDC Vouchers API](http://prd-tmp.cdn.gowhere.gov.sg/assets/cdcvouchersgowhere/data.gzip?v=2)
-- **Halal Detection**: Intelligent keyword matching based on merchant names
-- **Vegetarian Detection**: Pattern recognition for vegetarian-friendly establishments
-- **Operating Hours**: Estimated based on business type and industry standards
+- **Halal Verification**: [Singapore Halal Establishments JSON](https://raw.githubusercontent.com/zootato/singapore-halal-establishments/main/halal_establishments.json)
+- **Fallback Halal Detection**: Intelligent keyword matching for non-certified establishments
 
 ## 🎯 Improvements Over Original
 
-1. **Better Filtering**: Halal and vegetarian options not available in original
-2. **Real-time Status**: Shows which merchants are currently open
-3. **Modern UI**: Clean, responsive design with better UX
-4. **Enhanced Search**: More comprehensive search capabilities
-5. **Data Insights**: Display of cuisine types and business categories
+1. **Better Filtering**: Halal filtering with official certification data
+2. **Modern UI**: Clean, responsive design with better UX
+3. **Enhanced Search**: More comprehensive search capabilities
+4. **Data Insights**: Display of cuisine types and business categories
 
 ## 🛠️ Technical Architecture
 
@@ -70,12 +68,11 @@ src/
 
 ## 🔮 Future Enhancements
 
-- Integration with Google Places API for real operating hours
 - Map view with merchant locations
 - Reviews and ratings integration
-- Real-time halal certification from MUIS API
-- Push notifications for nearby open merchants
+- Push notifications for nearby merchants
 - Offline support with cached data
+- Real-time menu information
 
 ## 📱 Browser Support
 

@@ -33,8 +33,8 @@ export class GoogleMapsService {
   private static readonly GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
   private static readonly PLACES_API_URL = 'https://maps.googleapis.com/maps/api/place';
   
-  // Get opening hours from Google Places API
-  static async getOpeningHours(merchantName: string, address: string): Promise<any> {
+  // Get phone number from Google Places API
+  static async getPhoneNumber(merchantName: string, address: string): Promise<string | null> {
     if (!this.GOOGLE_MAPS_API_KEY) {
       console.warn('Google Maps API key not configured');
       return null;
@@ -54,26 +54,16 @@ export class GoogleMapsService {
       if (searchData.results && searchData.results.length > 0) {
         const placeId = searchData.results[0].place_id;
         
-        // Get detailed place information including opening hours
+        // Get detailed place information including phone number
         const detailsResponse = await fetch(
-          `${this.PLACES_API_URL}/details/json?place_id=${placeId}&fields=opening_hours,formatted_phone_number&key=${this.GOOGLE_MAPS_API_KEY}`
+          `${this.PLACES_API_URL}/details/json?place_id=${placeId}&fields=formatted_phone_number&key=${this.GOOGLE_MAPS_API_KEY}`
         );
         
         if (!detailsResponse.ok) return null;
         
         const detailsData = await detailsResponse.json();
         
-        const result: any = {};
-        
-        if (detailsData.result?.opening_hours) {
-          result.operating_hours = this.parseGoogleHours(detailsData.result.opening_hours);
-        }
-        
-        if (detailsData.result?.formatted_phone_number) {
-          result.phone = detailsData.result.formatted_phone_number;
-        }
-        
-        return result;
+        return detailsData.result?.formatted_phone_number || null;
       }
       
       return null;
@@ -82,45 +72,8 @@ export class GoogleMapsService {
       return null;
     }
   }
-  
-  // Convert Google's opening hours format to our format
-  private static parseGoogleHours(googleHours: any): any {
-    if (!googleHours.periods) return null;
-    
-    const weekDays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const operatingHours: any = {};
-    
-    // Initialize all days as closed
-    weekDays.forEach(day => {
-      operatingHours[day] = 'Closed';
-    });
-    
-    // Parse Google's periods format
-    googleHours.periods.forEach((period: any) => {
-      if (period.open && period.close) {
-        const dayIndex = period.open.day;
-        const dayName = weekDays[dayIndex];
-        
-        const openTime = this.formatTime(period.open.time);
-        const closeTime = this.formatTime(period.close.time);
-        
-        operatingHours[dayName] = `${openTime}-${closeTime}`;
-      } else if (period.open && !period.close) {
-        // 24 hour operation
-        const dayIndex = period.open.day;
-        const dayName = weekDays[dayIndex];
-        operatingHours[dayName] = '00:00-23:59';
-      }
-    });
-    
-    return operatingHours;
-  }
-  
-  // Format time from Google's HHMM format to HH:MM
-  private static formatTime(timeString: string): string {
-    const time = timeString.padStart(4, '0');
-    return `${time.slice(0, 2)}:${time.slice(2, 4)}`;
-  }
+
+
 }
 
 // OneMap Business Directory Integration
@@ -234,34 +187,239 @@ export class OneMapBusinessService {
 
 // MUIS Halal Certification Service
 export class MUISHalalService {
-  private static readonly MUIS_API_URL = 'https://www.muis.gov.sg/api/halal';
-  private static halalCache: Map<string, boolean> = new Map();
+  private static readonly MUIS_API_URL = 'https://halal.muis.gov.sg/api/halal/establishments';
+  private static halalCache: Map<string, { isHalal: boolean; details: any }> = new Map();
   private static lastCacheUpdate: Date | null = null;
   private static readonly CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+  private static readonly ENABLE_BROWSER_API_CALLS = true; // Use proxy server for real MUIS verification
+  private static readonly MUIS_PROXY_URL = 'http://localhost:3001/api/muis-halal'; // Local proxy server
   
-  // Check if establishment is halal certified
+  // Check if establishment is halal certified using MUIS API
   static async isHalalCertified(merchantName: string, address: string): Promise<boolean> {
     try {
       // Check cache first
       const cacheKey = `${merchantName}_${address}`.toLowerCase();
       if (this.halalCache.has(cacheKey) && this.isCacheValid()) {
-        return this.halalCache.get(cacheKey) || false;
+        return this.halalCache.get(cacheKey)?.isHalal || false;
       }
       
-      // For now, use keyword-based detection as MUIS API might require special access
-      // In production, you would integrate with the actual MUIS API
-      const isHalal = await this.checkHalalByKeywords(merchantName, address);
+      // Try MUIS API first
+      const muisResult = await this.checkMUISAPI(merchantName);
       
-      // Cache the result
-      this.halalCache.set(cacheKey, isHalal);
+      if (muisResult !== null) {
+        // Cache MUIS result
+        this.halalCache.set(cacheKey, { isHalal: muisResult.isHalal, details: muisResult.details });
+        this.lastCacheUpdate = new Date();
+        console.log(`✅ MUIS API verified: ${merchantName} - ${muisResult.isHalal ? 'HALAL' : 'NOT CERTIFIED'}`);
+        return muisResult.isHalal;
+      }
+      
+      // Fallback to keyword detection if MUIS API fails
+      console.warn(`⚠️ MUIS API failed for ${merchantName}, using keyword detection`);
+      const keywordResult = await this.checkHalalByKeywords(merchantName, address);
+      
+      // Cache keyword result
+      this.halalCache.set(cacheKey, { isHalal: keywordResult, details: null });
       this.lastCacheUpdate = new Date();
       
-      return isHalal;
+      return keywordResult;
     } catch (error) {
       console.error('MUIS Halal check error:', error);
-      // Fallback to keyword detection
+      // Final fallback to keyword detection
       return this.checkHalalByKeywords(merchantName, address);
     }
+  }
+  
+  // Check MUIS API for halal certification
+  private static async checkMUISAPI(merchantName: string): Promise<{ isHalal: boolean; details: any } | null> {
+    try {
+      // Use proxy server for browser environments to handle CSRF
+      const apiUrl = typeof window !== 'undefined' ? this.MUIS_PROXY_URL : this.MUIS_API_URL;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          text: merchantName.trim()
+        })
+      });
+      
+      if (!response.ok) {
+        if (response.status === 400) {
+          console.warn(`🔒 MUIS API requires CSRF token (${response.status}) for: ${merchantName}`);
+          console.info('💡 Consider setting up a proxy server for full MUIS integration');
+        } else {
+          console.warn(`MUIS API returned ${response.status} for: ${merchantName}`);
+        }
+        return null;
+      }
+      
+      const apiResponse = await response.json();
+      
+      // Handle proxy server response format vs direct MUIS API format
+      let establishments = [];
+      if (apiResponse.results && Array.isArray(apiResponse.results)) {
+        // Proxy server response format
+        establishments = apiResponse.results;
+        console.log(`📡 Proxy server response: ${apiResponse.totalRecords} total records`);
+      } else if (apiResponse.data && Array.isArray(apiResponse.data)) {
+        // Direct MUIS API response format
+        establishments = apiResponse.data;
+      }
+      
+      if (establishments.length === 0) {
+        // No results means not certified
+        return {
+          isHalal: false,
+          details: null
+        };
+      }
+        
+        // Check if any establishment is a close match to our merchant name
+        const merchantNameLower = merchantName.toLowerCase();
+        const matchingEstablishment = establishments.find((establishment: any) => {
+          const establishmentName = establishment.name.toLowerCase();
+          
+          // Direct name match
+          if (establishmentName.includes(merchantNameLower) || merchantNameLower.includes(establishmentName)) {
+            return true;
+          }
+          
+          // Check for partial matches (removing common words)
+          const cleanMerchantName = merchantNameLower
+            .replace(/\b(pte|ltd|singapore|s\)|restaurant|cafe|food|stall|@|#\d+|\(.*?\))\b/g, '')
+            .trim();
+          const cleanEstablishmentName = establishmentName
+            .replace(/\b(pte|ltd|singapore|s\)|restaurant|cafe|food|stall|@|#\d+|\(.*?\))\b/g, '')
+            .trim();
+          
+          // Check if core names match (minimum 3 characters)
+          if (cleanMerchantName.length >= 3 && cleanEstablishmentName.length >= 3) {
+            // Try both directions for partial matches
+            if (cleanEstablishmentName.includes(cleanMerchantName) || 
+                cleanMerchantName.includes(cleanEstablishmentName)) {
+              return true;
+            }
+            
+            // Check word-by-word matching for compound names
+            const merchantWords = cleanMerchantName.split(' ').filter((word: string) => word.length >= 3);
+            const establishmentWords = cleanEstablishmentName.split(' ').filter((word: string) => word.length >= 3);
+            
+            // If at least 2 significant words match, consider it a match
+            const matchingWords = merchantWords.filter((word: string) => 
+              establishmentWords.some((estWord: string) => estWord.includes(word) || word.includes(estWord))
+            );
+            
+            if (matchingWords.length >= 2 || 
+                (merchantWords.length <= 2 && matchingWords.length >= 1)) {
+              return true;
+            }
+          }
+          
+          return false;
+        });
+        
+        if (matchingEstablishment) {
+          console.log(`🕌 MUIS VERIFIED: ${merchantName} matches "${matchingEstablishment.name}" (Cert: ${matchingEstablishment.number})`);
+          return {
+            isHalal: true,
+            details: {
+              matchedEstablishment: matchingEstablishment,
+              totalFound: establishments.length,
+              searchResults: establishments
+            }
+          };
+        }
+        
+        // Found results but no close match
+        console.log(`⚠️ MUIS: Found ${establishments.length} results for "${merchantName}" but no close matches`);
+        return {
+          isHalal: false,
+          details: {
+            searchResults: establishments,
+            totalFound: establishments.length
+          }
+        };
+      
+      // Invalid response format
+      console.warn('MUIS API returned unexpected response format');
+      return null;
+      
+    } catch (error) {
+      // Handle CORS errors gracefully
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        console.warn(`🚫 MUIS API CORS blocked for: ${merchantName}. This is expected when running from browser.`);
+        console.info('💡 MUIS API integration works best from server-side or with proxy setup');
+      } else {
+        console.error('Error calling MUIS API:', error);
+      }
+      return null;
+    }
+  }
+  
+  // Get halal certification status with source information
+  static async getHalalCertificationStatus(merchantName: string, address: string): Promise<{ isHalal: boolean; source: string }> {
+    try {
+      // Skip MUIS API in browser environment if disabled to avoid CSRF errors
+      if (typeof window !== 'undefined' && !this.ENABLE_BROWSER_API_CALLS) {
+        // Use enhanced keyword detection in browser to avoid CSRF issues
+        const keywordResult = await this.checkHalalByKeywords(merchantName, address);
+        return {
+          isHalal: keywordResult,
+          source: keywordResult ? 'KEYWORD_DETECTED' : 'NOT_DETECTED'
+        };
+      }
+      
+      // Server-side: Try MUIS API first
+      const cleanMerchantName = this.cleanMerchantNameForSearch(merchantName);
+      console.log(`🔍 Checking MUIS API for CDC merchant: "${merchantName}" (cleaned: "${cleanMerchantName}")`);
+      const muisResult = await this.checkMUISAPI(cleanMerchantName);
+      
+      if (muisResult !== null) {
+        const source = muisResult.isHalal ? 'MUIS_VERIFIED' : 'MUIS_NOT_FOUND';
+        console.log(`🕌 MUIS Result for "${merchantName}": ${muisResult.isHalal ? 'HALAL CERTIFIED' : 'NOT CERTIFIED'} (${source})`);
+        return {
+          isHalal: muisResult.isHalal,
+          source: source
+        };
+      }
+      
+      // Fallback to enhanced keyword detection
+      console.info(`🔍 MUIS API unavailable, using enhanced keyword detection for: ${merchantName}`);
+      const keywordResult = await this.checkHalalByKeywords(merchantName, address);
+      return {
+        isHalal: keywordResult,
+        source: keywordResult ? 'KEYWORD_DETECTED' : 'NOT_DETECTED'
+      };
+      
+    } catch (error) {
+      console.error('Error getting halal certification status:', error);
+      // Final fallback
+      const keywordResult = await this.checkHalalByKeywords(merchantName, address);
+      return {
+        isHalal: keywordResult,
+        source: keywordResult ? 'KEYWORD_DETECTED' : 'NOT_DETECTED'
+      };
+    }
+  }
+  
+  // Clean merchant name for better MUIS API searching
+  private static cleanMerchantNameForSearch(merchantName: string): string {
+    return merchantName
+      // Remove common business suffixes
+      .replace(/\b(pte ltd|pte|ltd|singapore|s'pore|sgp)\b/gi, '')
+      // Remove stall numbers and location indicators
+      .replace(/#\d+[-\w]*|\(.*?\)|@.*$/gi, '')
+      // Remove extra whitespace
+      .trim()
+      // Use first few meaningful words if name is too long
+      .split(' ')
+      .slice(0, 4)
+      .join(' ')
+      .trim();
   }
   
   // Fallback method using keywords (enhanced version)
@@ -333,40 +491,30 @@ export class DataEnhancementService {
     const enhancedMerchant = { ...merchant };
     
     try {
-      // Priority 1: Try Google Maps for opening hours and phone
-      let googleData = null;
+      // Priority 1: Try Google Maps for phone number
+      let googlePhone = null;
       try {
-        googleData = await GoogleMapsService.getOpeningHours(
+        googlePhone = await GoogleMapsService.getPhoneNumber(
           merchant.name,
           merchant.address
         );
         
-        if (googleData) {
-          console.log(`✅ Google Maps data found for ${merchant.name}`);
-          if (googleData.operating_hours) {
-            enhancedMerchant.operatingHours = googleData.operating_hours;
-            enhancedMerchant.hoursSource = 'GOOGLE_MAPS';
-          }
-          if (googleData.phone) {
-            enhancedMerchant.phone = googleData.phone;
-          }
+        if (googlePhone) {
+          console.log(`✅ Google Maps phone found for ${merchant.name}`);
+          enhancedMerchant.phone = googlePhone;
         }
       } catch (error) {
         console.warn(`Google Maps API failed for ${merchant.name}:`, error);
       }
       
-      // Priority 2: Fallback to OneMap if Google Maps failed
-      if (!googleData?.operating_hours) {
+      // Priority 2: Fallback to OneMap if Google Maps failed for phone
+      if (!googlePhone) {
         const businessInfo = await OneMapBusinessService.getBusinessInfo(
           merchant.name,
           merchant.address
         );
         
         if (businessInfo) {
-          if (!enhancedMerchant.operatingHours) {
-            enhancedMerchant.operatingHours = businessInfo.operating_hours;
-            enhancedMerchant.hoursSource = 'ONEMAP_ESTIMATED';
-          }
           if (!enhancedMerchant.phone) {
             enhancedMerchant.phone = businessInfo.phone;
           }
@@ -375,13 +523,13 @@ export class DataEnhancementService {
       }
       
       // Get halal certification from MUIS
-      const isHalal = await MUISHalalService.isHalalCertified(
+      const halalResult = await MUISHalalService.getHalalCertificationStatus(
         merchant.name,
         merchant.address
       );
       
-      enhancedMerchant.isHalal = isHalal;
-      enhancedMerchant.halalSource = isHalal ? 'MUIS_VERIFIED' : 'KEYWORD_CHECKED';
+      enhancedMerchant.isHalal = halalResult.isHalal;
+      enhancedMerchant.halalSource = halalResult.source;
       
     } catch (error) {
       console.error('Error enhancing merchant data:', error);

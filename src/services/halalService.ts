@@ -88,17 +88,17 @@ export class HalalService {
       const similarity = matchingWords.length / Math.max(merchantWords.length, halalWords.length);
       const hasPostalMatch = halal.postal === merchantPostal;
 
-      // Require very high similarity: 80% + at least 2 key words must match
-      if (similarity >= 0.8 && matchingWords.length >= 2 && merchantWords.length >= 2) {
-        console.log(`Potential halal match found:
-          Merchant: "${merchantName}"
-          MUIS: "${halal.name}"
-          Similarity: ${similarity.toFixed(2)}
-          Matching words: ${matchingWords.join(', ')}
-          Postal match: ${hasPostalMatch}`);
+      // VERY STRICT: Require 90% similarity + at least 2 key words + significant overlap
+      if (similarity >= 0.9 && matchingWords.length >= 2 && merchantWords.length >= 2) {
+        console.log(`🕌 POTENTIAL HALAL MATCH:
+          CDC: "${merchantName}" (postal: ${merchantPostal})
+          MUIS: "${halal.name}" (postal: ${halal.postal})
+          Similarity: ${(similarity * 100).toFixed(1)}%
+          Matching words: [${matchingWords.join(', ')}]
+          Postal match: ${hasPostalMatch ? '✅' : '❌'}`);
 
         if (!bestMatch ||
-            (hasPostalMatch && !bestMatch.hasPostal) || // Prefer postal matches
+            (hasPostalMatch && !bestMatch.hasPostal) || // Strongly prefer postal matches
             (hasPostalMatch === bestMatch.hasPostal && similarity > bestMatch.similarity)) {
           bestMatch = { establishment: halal, similarity, hasPostal: hasPostalMatch };
         }
@@ -106,12 +106,15 @@ export class HalalService {
     }
 
     if (bestMatch) {
-      if (bestMatch.hasPostal) {
-        return { establishment: bestMatch.establishment, source: 'MUIS_VERIFIED_SIMILAR_POSTAL' };
-      }
-      return { establishment: bestMatch.establishment, source: 'MUIS_VERIFIED_SIMILAR_NAME' };
+      const result = bestMatch.hasPostal
+        ? { establishment: bestMatch.establishment, source: 'MUIS_VERIFIED_SIMILAR_POSTAL' }
+        : { establishment: bestMatch.establishment, source: 'MUIS_VERIFIED_SIMILAR_NAME' };
+
+      console.log(`✅ HALAL CONFIRMED: "${merchantName}" → "${bestMatch.establishment.name}" (Cert: ${bestMatch.establishment.number})`);
+      return result;
     }
 
+    console.log(`❌ NOT HALAL: "${merchantName}" - no match found in MUIS database`);
     return null;
   }
 

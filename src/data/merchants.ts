@@ -88,14 +88,10 @@ export const fetchCDCMerchants = async (): Promise<CDCApiResponse> => {
 export const enhanceMerchantData = async (merchant: CDCApiMerchant): Promise<Merchant> => {
   const name = merchant.name.toLowerCase();
 
-  // Import halal service dynamically
-  const { HalalService } = await import('../services/halalService');
-  const halalResult = await HalalService.isHalal(merchant as Merchant);
-
   const enhanced: Merchant = {
     ...merchant,
-    isHalal: halalResult.isHalal,
-    halalSource: halalResult.source,
+    isHalal: false, // Will be determined later when halal filter is used
+    halalSource: 'NOT_CHECKED',
     cuisine: detectCuisine(name),
   };
 

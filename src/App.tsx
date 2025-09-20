@@ -161,7 +161,7 @@ function App() {
     setTimeout(async () => {
       try {
         let result = await searchMerchants(merchants, searchTerm);
-        result = filterMerchants(result, filters);
+        result = await filterMerchants(result, filters);
         result = sortMerchants(result, sortBy);
         setFilteredMerchants(result);
         setDisplayedMerchants(result.slice(0, showingCount));
@@ -169,7 +169,7 @@ function App() {
       } catch (error) {
         console.error('Search error:', error);
         // Fallback to basic filtering
-        let result = filterMerchants(merchants, filters);
+        let result = await filterMerchants(merchants, filters);
         result = sortMerchants(result, sortBy);
         setFilteredMerchants(result);
         setDisplayedMerchants(result.slice(0, 50));

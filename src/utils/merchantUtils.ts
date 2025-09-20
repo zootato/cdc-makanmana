@@ -116,15 +116,33 @@ export const searchMerchants = async (
   return results;
 };
 
-export const filterMerchants = (
+export const filterMerchants = async (
   merchants: Merchant[],
   filters: FilterOptions
-): Merchant[] => {
+): Promise<Merchant[]> => {
+  // If halal filter is enabled, check halal status for all merchants
+  if (filters.showHalalOnly) {
+    const { HalalService } = await import('../services/halalService');
+
+    const halalCheckedMerchants = await Promise.all(
+      merchants.map(async (merchant) => {
+        if (merchant.halalSource === 'NOT_CHECKED') {
+          const halalResult = await HalalService.isHalal(merchant);
+          return {
+            ...merchant,
+            isHalal: halalResult.isHalal,
+            halalSource: halalResult.source
+          };
+        }
+        return merchant;
+      })
+    );
+
+    return halalCheckedMerchants.filter(merchant => merchant.isHalal);
+  }
+
+  // For other filters, use regular filtering
   return merchants.filter(merchant => {
-    // Halal filter
-    if (filters.showHalalOnly && !merchant.isHalal) {
-      return false;
-    }
     
 
     

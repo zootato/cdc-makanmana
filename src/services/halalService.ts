@@ -17,26 +17,70 @@ export class HalalService {
   static async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    try {
-      // Fetch directly from GitHub API endpoint
-      const response = await fetch('https://raw.githubusercontent.com/zootato/singapore-halal-establishments/main/halal_establishments.json');
+    const maxRetries = 3;
+    let lastError: Error | null = null;
 
-      if (!response.ok) {
-        throw new Error(`GitHub API returned ${response.status}`);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Attempt ${attempt}/${maxRetries}: Fetching halal establishments...`);
+
+        // Add timeout and retry logic
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+        const response = await fetch(
+          'https://raw.githubusercontent.com/zootato/singapore-halal-establishments/main/halal_establishments.json',
+          {
+            signal: controller.signal,
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          }
+        );
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`GitHub API returned ${response.status}: ${response.statusText}`);
+        }
+
+        this.halalEstablishments = await response.json();
+        this.initialized = true;
+        console.log(`✅ Successfully loaded ${this.halalEstablishments.length} halal establishments from GitHub`);
+        return;
+
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.warn(`❌ Attempt ${attempt} failed:`, lastError.message);
+
+        // Wait before retry (exponential backoff)
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+          console.log(`⏳ Retrying in ${delay/1000}s...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
       }
-
-      this.halalEstablishments = await response.json();
-      this.initialized = true;
-      console.log(`Loaded ${this.halalEstablishments.length} halal establishments from GitHub`);
-    } catch (error) {
-      console.error('Failed to load halal establishments from GitHub:', error);
-      this.halalEstablishments = [];
-      this.initialized = true;
     }
+
+    // All retries failed
+    console.error(`🚫 Failed to load halal establishments after ${maxRetries} attempts:`, lastError?.message);
+    console.error('🔄 Halal filtering will be disabled for this session');
+    this.halalEstablishments = [];
+    this.initialized = true;
   }
 
   static async isHalal(merchant: Merchant): Promise<{ isHalal: boolean; source: string; certNumber?: string }> {
     await this.initialize();
+
+    // If halal data failed to load, return unknown status
+    if (this.halalEstablishments.length === 0) {
+      console.log(`⚠️ No halal data available - cannot verify "${merchant.name}"`);
+      return {
+        isHalal: false,
+        source: 'HALAL_DATA_UNAVAILABLE'
+      };
+    }
 
     // Primary matching: Find the best name match
     const bestMatch = this.findBestNameMatch(merchant.name, merchant.postalCode);

@@ -160,15 +160,20 @@ function App() {
     // Use setTimeout to prevent UI blocking
     setTimeout(async () => {
       try {
-        let result = await searchMerchants(merchants, searchTerm);
+        // Only search if there's actually a search term
+        let result = merchants;
+        if (searchTerm.trim()) {
+          result = await searchMerchants(merchants, searchTerm);
+        }
+
         result = await filterMerchants(result, filters);
         result = sortMerchants(result, sortBy);
         setFilteredMerchants(result);
         setDisplayedMerchants(result.slice(0, showingCount));
         setShowingCount(50); // Reset to 50 on new search
       } catch (error) {
-        console.error('Search error:', error);
-        // Fallback to basic filtering
+        console.error('Search/filter error:', error);
+        // Fallback to basic filtering without search
         let result = await filterMerchants(merchants, filters);
         result = sortMerchants(result, sortBy);
         setFilteredMerchants(result);
@@ -182,8 +187,12 @@ function App() {
   useEffect(() => {
     if (searchTerm || Object.values(filters).some(v => v === true || (v !== 'all' && v !== false))) {
       performSearch();
+    } else {
+      // No search term and no filters - show all merchants
+      setFilteredMerchants(merchants);
+      setDisplayedMerchants(merchants.slice(0, 50));
     }
-  }, [performSearch, searchTerm, filters]);
+  }, [performSearch, searchTerm, filters, merchants]);
 
   const handleFilterChange = (key: keyof FilterOptions, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
